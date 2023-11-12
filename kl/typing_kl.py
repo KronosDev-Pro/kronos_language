@@ -65,6 +65,7 @@ class TokenBuffer:
     def consume(self) -> bool: self._current_idx += 1 if (self._current_idx+1) < self._len_child else 0;return (self._current_idx+1) < self._len_child
     def add_child(self, token: TOKEN_TYPE) -> None: self._child.append(token); self._len_child += 1
     def set_token(self, token: TOKEN) -> None: self._token = token
+    def EOL(self) -> None: self._child.append(TOKEN_TYPE({'token': TOKEN.EOL, 'value': b''})); self._len_child += 1
 
     @property
     def get_context(self) -> int: return self._context

@@ -5,6 +5,7 @@ from subprocess import run
 from time import monotonic_ns
 
 from kl.lezer import Lezer
+import kl.tokenizer
 
 def init(path_file: Path, generator_name: str = ''):
     _duration: list[int] = [monotonic_ns()]

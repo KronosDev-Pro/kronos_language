@@ -5,7 +5,7 @@ from re import compile, Pattern
 
 from typing import Generator, Tuple, Any, Callable, Optional, AnyStr, Union, TypedDict, Iterable, TypeAlias
 
-from kl.typing_kl import CONTEXT_CREATE, CONTEXT_FUNC_TYPE, TokenBuffer
+from kl.typing_kl import CONTEXT_CREATE, CONTEXT_FUNC_TYPE, TokenBuffer, TOKEN
 
 _CONTEXT: dict[int, CONTEXT_CREATE] = {
     0x0: (b'', [])
@@ -42,10 +42,6 @@ def add_context(
         return fn
     return context_decorator
 
-NUMERIC_VALUE: Pattern = compile(r'(\"|\'|)[0-9]*(\"|\'|)')
-ALPHA_VALUE: Pattern = compile(r'(\"|\')[^\{\[\(][a-zA-Z0-9 \-\_\[\]\(\)]*[^\)\]\}](\"|\')')
-VAR_PATTERN: Pattern = compile(r'[a-zA-Z\_][a-zA-Z0-9\_]*[^\)\]\}](\:|\=|)')
-
     
 class Lezer:
     tokens: list[TokenBuffer]
@@ -72,14 +68,14 @@ class Lezer:
                 entry = word
                 context_id = 0x0
                 
-            function(entry, context_id, context_var, token)
-        return 
+            last_return_function = function(entry, context_id, context_var, token)
+        return last_return_function
     
     def run(self, line_content: bytes):
         var_context: Iterable[bytes] = []
         len_context_parent: int = len(_CONTEXT_PARENT)
     
-        token: TokenBuffer
+        token: Optional[TokenBuffer] = None
         idx_words: int = 0
         words: Generator[Tuple[int, bytes], Any, Any] = self.from_line_to_words(line_content)
         context: int = 0x0
@@ -88,64 +84,75 @@ class Lezer:
         for idx_word, word in words:
             idx_context_parent: int = 1
             entry: bytes
-            context_id: int
-            while not context and idx_context_parent < len_context_parent:
-                context_params = _CONTEXT[_CONTEXT_PARENT[idx_context_parent]] 
+            context_id: int = 0
+            print(word, _CONTEXT_PARENT, context_id)
+            while not context and idx_context_parent <= len_context_parent:
+                context_params = _CONTEXT[_CONTEXT_PARENT[idx_context_parent-1]] 
                 search_param = context_params[0]
                 functions_params = context_params[1]
+                print("fn_p", functions_params)
                 
                 run_create = False
                 
-                context_id = _CONTEXT_PARENT[idx_context_parent]
-                if self.tokens: token = self.tokens[-1]
-                else: token = TokenBuffer(context_id)
+                context_id = _CONTEXT_PARENT[idx_context_parent-1]
+                token = TokenBuffer(context_id)
                 
                 if isinstance(search_param, Pattern):
-                    if search_param.match(word.decode): run_create = True
+                    if search_param.match(word.decode()): run_create = True
                 else:
                     if word == search_param: run_create = True
                     
                 if run_create:
-                    self.run_create_context(word, context_var, functions_params, token)
+                    res = self.run_create_context(word, context_var, list(functions_params), token)
+                    if res:
+                        print(res)
+                        token = res[0]
+                idx_context_parent += 1
+            if token: print(token)
                         
+            # if word == b"print": token['token'] = TOKEN.PRINT; context = 'print'
+            # elif VAR_PATTERN.match(word.decode()) and idx_word == 0: token = {'token': TOKEN.VAR, 'value': [{'token': TOKEN.NAME, 'value': word[:-1]}]}; context = 'var'
             
-            
-            if word == b"print": token['token'] = Token_Enum.PRINT; context = 'print'
-            elif VAR_PATTERN.match(word.decode()) and idx_word == 0: token = {'token': Token_Enum.VAR, 'value': [{'token': Token_Enum.NAME, 'value': word[:-1]}]}; context = 'var'
-            
-            if context == "print":
-                if NUMERIC_VALUE.match(word.decode()): token['value'] = {'token': Token_Enum.VALUE, 'value': (word, Token_Enum.NUMBER)}
-                elif ALPHA_VALUE.match(word.decode()): token['value'] = {'token': Token_Enum.VALUE, 'value': (word, Token_Enum.STRING)}
-                elif word == b',': token['value'] = {'token': Token_Enum.PRINT_DELIMITER, 'value': None}
-                elif VAR_PATTERN.match(word.decode()) and word in var_context:  token['value'] = {'token': Token_Enum.VAR, 'value': word}
-            elif context == "var":
-                if word == b'=': context += ' set'
-                elif word == b':': context += ' type'
-            elif context == 'var set':
-                if NUMERIC_VALUE.match(word.decode()):
-                    token['value'].append({'token': Token_Enum.TYPE, 'value': Token_Enum.NUMBER})
-                    token['value'].append({'token': Token_Enum.VALUE, 'value': word})
-                elif ALPHA_VALUE.match(word.decode()):
-                    token['value'].append({'token': Token_Enum.TYPE, 'value': Token_Enum.STRING})
-                    token['value'].append({'token': Token_Enum.VALUE, 'value': word})
-                context = ""
-            elif context == 'var type':
-                if word == b'number':
-                    token['value'].append({'token': Token_Enum.TYPE, 'value': Token_Enum.NUMBER})
-                if word == b'string':
-                    token['value'].append({'token': Token_Enum.TYPE, 'value': Token_Enum.STRING})
-                context += 'var type set'
-            elif context == 'var type set':
-                if NUMERIC_VALUE.match(word.decode()):
-                    token['value'].append({'token': Token_Enum.VALUE, 'value': word})
-                elif ALPHA_VALUE.match(word.decode()):
-                    token['value'].append({'token': Token_Enum.VALUE, 'value': word})
+            # if context == "print":
+            #     if NUMERIC_VALUE.match(word.decode()): token['value'] = {'token': TOKEN.VALUE, 'value': (word, TOKEN.NUMBER)}
+            #     elif ALPHA_VALUE.match(word.decode()): token['value'] = {'token': TOKEN.VALUE, 'value': (word, TOKEN.STRING)}
+            #     elif word == b',': token['value'] = {'token': TOKEN.PRINT_DELIMITER, 'value': None}
+            #     elif VAR_PATTERN.match(word.decode()) and word in var_context:  token['value'] = {'token': TOKEN.VAR, 'value': word}
+            # elif context == "var":
+            #     if word == b'=': context += ' set'
+            #     elif word == b':': context += ' type'
+            # elif context == 'var set':
+            #     if NUMERIC_VALUE.match(word.decode()):
+            #         token['value'].append({'token': TOKEN.TYPE, 'value': TOKEN.NUMBER})
+            #         token['value'].append({'token': TOKEN.VALUE, 'value': word})
+            #     elif ALPHA_VALUE.match(word.decode()):
+            #         token['value'].append({'token': TOKEN.TYPE, 'value': TOKEN.STRING})
+            #         token['value'].append({'token': TOKEN.VALUE, 'value': word})
+            #     context = ""
+            # elif context == 'var type':
+            #     if word == b'number':
+            #         token['value'].append({'token': TOKEN.TYPE, 'value': TOKEN.NUMBER})
+            #     if word == b'string':
+            #         token['value'].append({'token': TOKEN.TYPE, 'value': TOKEN.STRING})
+            #     context += 'var type set'
+            # elif context == 'var type set':
+            #     if NUMERIC_VALUE.match(word.decode()):
+            #         token['value'].append({'token': TOKEN.VALUE, 'value': word})
+            #     elif ALPHA_VALUE.match(word.decode()):
+            #         token['value'].append({'token': TOKEN.VALUE, 'value': word})
                     
             
                 
             idx_words += 1
         
         # TODO: VALIDATE TOKEN LIST
-        self.tokens.append(token)
-        self.tokens.append({'token': Token_Enum.EOL, 'value': None})
+        if token: token.EOL()
+        return token
+        
+
+    def tokenize(self, file_content: bytes):
+        for line in file_content.splitlines():
+            token = self.run(line)
+            if token: self.tokens.append(token)
             
+            print(self.tokens)
